@@ -29,17 +29,15 @@ void setup() {
     Serial.println("Hello world\\n");
 #endif
     TestLog.begin();
-#ifdef LOG_DEBUG
     {
-	LogEntry entry1 = { LOG_END,   "2023-01", 1320, 30*60 };
-	LogEntry entry2 = { LOG_HALT,  "2023-02", 1220, 20*60 };
-	LogEntry entry3 = { LOG_START, "2023-03", 1380, 2*60 };
+	LogEntry entry1 = { LOG_FINISHED, "2023-01", 1320, 1050, 30*60 };
+	LogEntry entry2 = { LOG_HALTED,   "2023-02", 1220, 1180, 20*60 };
+	LogEntry entry3 = { LOG_RUNNING,  "2023-03", 1380, 1225,  5*60 };
 
 	TestLog.put(0, entry1);
 	TestLog.put(1, entry2);
 	TestLog.put(2, entry3);
     }
-#endif
 }
 
 void loop() {
@@ -97,26 +95,27 @@ void resultsScreen() {
 	} else {
 	    LogEntry entry;
 	    const char *stateName[] = {
-		"NONE  ",
-		"START ",
-		"HALT  ",
-		"END   ",
+		"NEW       ",
+		"STARTED   ",
+		"RUNNING   ",
+		"HALTED    ",
+		"FINISHED  ",
 	    };
-	    char vstr[7];
 	    char hhmmss[9];
+	    char vstr[7];
 
 	    TestLog.get(slot, entry);
 
 	    // draw the screen
 	    lcd.setCursor(0, 0);
 	    lcd.print(entry.id);
-	    for (int col = strlen(entry.id); col < 10; col++)
+	    for (int col = strlen(entry.id); col < 8; col++)
 		lcd.print(" ");
-	    lcd.print(stateName[entry.state]);
-	    lcd.setCursor(0, 1);
 	    lcd.print(timeString(hhmmss, entry.time));
-	    lcd.print("  ");
-	    lcd.print(vString(vstr, entry.vstart));
+
+	    lcd.setCursor(0, 1);
+	    lcd.print(stateName[entry.state]);
+	    lcd.print(vString(vstr, (entry.state == LOG_FINISHED ? entry.vstart : entry.vend)));
 	}
         // wait for button press
         switch (readButtons()) {

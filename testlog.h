@@ -4,14 +4,16 @@ struct LogEntry {
     uint16_t state;
     char     id[8];	// battery ID, e.g. "2023-04"
     uint16_t vstart;	// initial battery voltage
-    uint32_t time;	// test time
+    uint16_t vend;
+    uint32_t time;	// test runtime, seconds
 };
 
-#define LOG_NONE  0      // empty slot
-#define LOG_START 1      // test started
-#define LOG_HALT  2      // test stopped by user
-#define LOG_END   3      // test ended (battery <= 10.5V)
-#define LOG_ERASE 0xffff // erased EEPROM
+#define LOG_NONE     0  // empty slot, log ring end marker
+#define LOG_STARTED  1  // log initial battery voltage
+#define LOG_RUNNING  2  // test in progress
+#define LOG_HALTED   3  // test stopped by user
+#define LOG_FINISHED 4  // test ended (battery <= 10.5V)
+#define LOG_ERASE 0xffff // unused (erased) EEPROM
 
 
 class _TestLog

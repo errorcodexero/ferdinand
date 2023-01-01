@@ -131,6 +131,6 @@ bool _TestLog::isActive(LogEntry& entry)
 {
     // Don't just test for LOG_NONE, since hw-erased EEPROM
     //   returns 0xFFFF rather than 0x0000.
-    return (entry.state >= LOG_START && entry.state <= LOG_END);
+    return (entry.state >= LOG_STARTED && entry.state <= LOG_FINISHED);
 }
 
