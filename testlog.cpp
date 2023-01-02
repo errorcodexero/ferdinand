@@ -8,6 +8,20 @@ _TestLog TestLog;  // presumed singleton instance
 // Find the first and last occupied slots in the ring.
 void _TestLog::begin()
 {
+    /*
+	for (int addr = 0; addr < EEPROM.length(); addr++)
+	    EEPROM.update(addr, 0xFF);
+
+	LogEntry entry1 = { LOG_FINISHED, "2023-01", 1320, 1050, 30*60 };
+	TestLog.put(0, entry1);
+
+	LogEntry entry2 = { LOG_HALTED,   "2023-02", 1220, 1180, 20*60 };
+	TestLog.put(1, entry2);
+
+	LogEntry entry3 = { LOG_RUNNING,  "2023-03", 1380, 1225,  5*60 };
+	TestLog.put(2, entry3);
+    */
+
     _num_slots = (EEPROM.length() / sizeof (LogEntry));
 
     LogEntry entry;
@@ -16,17 +30,13 @@ void _TestLog::begin()
 	// Slot 0 is occupied, but it may not be the first-used.
 	// Search for the marker after the last-used slot.
 	_last = findUnused(1);
-  Serial.print("_last = "); Serial.println(_last);
 	// Continue searching to find the first-used slot.
 	_first = findUsed(_last);
-  Serial.print("_first = "); Serial.println(_first);
     } else {
 	// Slot 0 is unoccupied.  Search for the first-used slot.
 	_first = findUsed(1);
-  Serial.print("_first = "); Serial.println(_first);
 	// Continue searching to find the end marker.
 	_last = findUnused(_first);
-  Serial.print("_last = "); Serial.println(_last);
     }
 }
 
@@ -131,6 +141,6 @@ bool _TestLog::isActive(LogEntry& entry)
 {
     // Don't just test for LOG_NONE, since hw-erased EEPROM
     //   returns 0xFFFF rather than 0x0000.
-    return (entry.state >= LOG_STARTED && entry.state <= LOG_FINISHED);
+    return (entry.state >= LOG_START && entry.state <= LOG_FINISHED);
 }
 

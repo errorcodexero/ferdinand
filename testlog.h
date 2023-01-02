@@ -9,7 +9,7 @@ struct LogEntry {
 };
 
 #define LOG_NONE     0  // empty slot, log ring end marker
-#define LOG_STARTED  1  // log initial battery voltage
+#define LOG_START    1  // set up to start test
 #define LOG_RUNNING  2  // test in progress
 #define LOG_HALTED   3  // test stopped by user
 #define LOG_FINISHED 4  // test ended (battery <= 10.5V)
@@ -21,7 +21,7 @@ class _TestLog
 protected:
     int _num_slots;   // number of slots available in EEPROM
     int _first;       // first used slot
-    int _last;        // last used slot
+    int _last;        // last used slot + 1
 
 public:
     // Initialize the logger, set the first and loast slots.

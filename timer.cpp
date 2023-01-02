@@ -44,20 +44,34 @@ uint32_t testTime()
     return t;
 }
 
-char *timeString(char hhmmss[], uint32_t t)
+char *hhmmss(char buf[9], uint32_t t)
 {
     uint16_t sec = t % 60;
     uint16_t min = (t / 60) % 60;
     uint16_t hr  = (t / 3600) % 100;
-    hhmmss[0] = '0' + (hr / 10);
-    hhmmss[1] = '0' + (hr % 10);
-    hhmmss[2] = ':';
-    hhmmss[3] = '0' + (min / 10);
-    hhmmss[4] = '0' + (min% 10);
-    hhmmss[5] = ':';
-    hhmmss[6] = '0' + (sec / 10);
-    hhmmss[7] = '0' + (sec % 10);
-    hhmmss[8] = '\0';
-    return hhmmss;
+    buf[0] = '0' + (hr / 10);
+    buf[1] = '0' + (hr % 10);
+    buf[2] = ':';
+    buf[3] = '0' + (min / 10);
+    buf[4] = '0' + (min% 10);
+    buf[5] = ':';
+    buf[6] = '0' + (sec / 10);
+    buf[7] = '0' + (sec % 10);
+    buf[8] = '\0';
+    return buf;
+}
+
+char *mmss(char buf[7], uint32_t t)
+{
+    uint16_t sec = t % 60;
+    uint16_t min = (t / 60) % 100;
+    buf[0] = '0' + (min / 10);
+    buf[1] = '0' + (min% 10);
+    buf[2] = 'm';
+    buf[3] = '0' + (sec / 10);
+    buf[4] = '0' + (sec % 10);
+    buf[5] = 's';
+    buf[6] = '\0';
+    return buf;
 }
 
