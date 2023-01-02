@@ -11,6 +11,7 @@
 #define	TEST_SCREEN 3
 
 int screen = HOME_SCREEN;
+TestStatus testStatus;
 
 void setup()
 {
@@ -57,11 +58,11 @@ void homeScreen()
     while (screen == HOME_SCREEN)
     {
         // draw the screen
+	lcd.noBlink();
         lcd.setCursor(0, 0);
         lcd.print("FRC 1425");
         lcd.setCursor(0, 1);
         lcd.print("Battery Test");
-	lcd.noBlink();
 
         // wait for button release (without refreshing screen)
 	int button;
@@ -82,7 +83,7 @@ void homeScreen()
 }
 
 // draw the screen
-void showEntry(LogEntry& entry)
+void showStatus()
 {
     char buf[7];
     const char *stateName[] = {
@@ -92,36 +93,31 @@ void showEntry(LogEntry& entry)
 	"HALTED    ",
 	"FINISHED  ",
     };
+    lcd.noBlink();
     lcd.setCursor(0, 0);
-    lcd.print(entry.id);
-    for (int col = strlen(entry.id); col < 10; col++)
+    lcd.print(testStatus.id);
+    for (int col = strlen(testStatus.id); col < 10; col++)
 	lcd.print(" ");
-    lcd.print(mmss(buf, entry.time));
+    lcd.print(mmss(buf, testStatus.time));
     lcd.setCursor(0, 1);
-    lcd.print(stateName[entry.state]);
-    lcd.print(vString(buf, (entry.state == LOG_FINISHED ? entry.vstart : entry.vend)));
+    lcd.print(stateName[testStatus.state]);
+    lcd.print(vString(buf, (testStatus.state == LOG_FINISHED ? testStatus.vstart : testStatus.vbat)));
 }
 
 void resultsScreen()
 {
-    int testNum = 0;
+    int testNum = TestLog.num_used() - 1;
 
     while (screen == RESULTS_SCREEN)
     {
-	int slot = TestLog.first() + testNum;
-	if (slot >= TestLog.num_slots())
-	    slot -= TestLog.num_slots();
-
 	// draw the screen
-	if (slot == TestLog.last()) {
+	if (testNum == -1) {
+	    lcd.noBlink();
 	    lcd.setCursor(0, 0);
 	    lcd.print("Log Empty ");
-	    lcd.noBlink();
 	} else {
-	    LogEntry entry;
-	    TestLog.get(slot, entry);
-	    showEntry(entry);
-	    lcd.noBlink();
+	    TestLog.get(testNum, testStatus);
+	    showStatus();
 	}
 
         // wait for button release (without refreshing screen)
@@ -136,12 +132,8 @@ void resultsScreen()
 	// take action
 	switch (button) {
 	    case BUTTON_UP:
-		if (slot != TestLog.last()) {
-		    if (++slot >= TestLog.num_slots())
-			slot -= TestLog.num_slots();
-		    if (slot != TestLog.last())
-			++testNum;
-		}
+		if (testNum < TestLog.num_used() - 1)
+		    ++testNum;
 		break;
 	    case BUTTON_DOWN:
 		if (testNum > 0)
@@ -182,19 +174,18 @@ char idPrev(char c)
 
 void setupScreen()
 {
-    LogEntry entry;
-    entry.state = LOG_NONE;
-    strncpy(entry.id, "2020-00", sizeof entry.id);
-    entry.vstart = 0;
-    entry.vend = 1050;
-    entry.time = 0;
+    testStatus.state = LOG_NONE;
+    strncpy(testStatus.id, "2023-01", sizeof testStatus.id);
+    testStatus.vstart = testStatus.vbat = battery();
+    testStatus.vend = 1050;
+    testStatus.time = 0;
 
     int cursor = 0;
 
     while (screen == SETUP_SCREEN)
     {
 	// draw the screen
-	showEntry(entry);
+	showStatus();
 
 	if (cursor == -1) {
 	    // allow selection of BACK or START
@@ -222,9 +213,9 @@ void setupScreen()
 		Serial.println("BUTTON_UP");
 #endif
 		if (cursor == -1) {
-		    entry.state = LOG_START;  // should this toggle?
+		    testStatus.state = LOG_START;  // should this toggle?
 		} else {
-		    entry.id[cursor] = idNext(entry.id[cursor]);
+		    testStatus.id[cursor] = idNext(testStatus.id[cursor]);
 		}
 		break;
 	    case BUTTON_DOWN:
@@ -232,9 +223,9 @@ void setupScreen()
 		Serial.println("BUTTON_DOWN");
 #endif
 		if (cursor == -1) {
-		    entry.state = LOG_NONE;	// should this toggle?
+		    testStatus.state = LOG_NONE;	// should this toggle?
 		} else {
-		    entry.id[cursor] = idPrev(entry.id[cursor]);
+		    testStatus.id[cursor] = idPrev(testStatus.id[cursor]);
 		}
 		break;
 	    case BUTTON_LEFT:
@@ -246,7 +237,7 @@ void setupScreen()
 		if (cursor >= 0) {
 		    --cursor;
 		} else {
-		    cursor = sizeof(entry.id) - 2;
+		    cursor = sizeof(testStatus.id) - 2;
 		}
 #ifdef SERIAL_DEBUG
 		Serial.println(cursor);
@@ -258,7 +249,7 @@ void setupScreen()
 		Serial.print(cursor);
 		Serial.print("--> ");
 #endif
-		if (cursor < sizeof(entry.id) - 2) {
+		if (cursor < sizeof(testStatus.id) - 2) {
 		    ++cursor;
 		} else {
 		    cursor = -1;
@@ -269,7 +260,14 @@ void setupScreen()
 		break;
 	    case BUTTON_SELECT:
 		if (cursor == -1) {
-		    screen = (entry.state == LOG_START) ? TEST_SCREEN : RESULTS_SCREEN;
+		    if (testStatus.state == LOG_START) {
+			// create a new log entry for this test
+			TestLog.add(testStatus);
+			// test screen will start the test
+			screen = TEST_SCREEN;
+		    } else {
+			screen = RESULTS_SCREEN;
+		    }
 		}
 		break;
 	}
@@ -278,88 +276,109 @@ void setupScreen()
 
 void startTest()
 {
-    // change mode/screen to "testing"
     // turn on load relay
     loadOn();
-    // start timer
-    startTimer();
+
+    // start/continue timer
+    startTimer(testStatus.time);
+
+    // change status to "running"
+    testStatus.state = LOG_RUNNING;
+    TestLog.update(testStatus);
 }
 
-void stopTest()
+void stopTest(int why)
 {
     // turn off load relay
     loadOff();
+
     // stop timer
     stopTimer();
+
     // record test result in EEPROM
+    testStatus.state = why;
+    TestLog.update(testStatus);
+}
+
+bool runTest()
+{
+    static bool tick = false;
+
+    // update test status
+    testStatus.time = testTime();
+    testStatus.vbat = battery();
+    showStatus();
+
+    // log status every 60 seconds
+    if ((testStatus.time % 60) == 0) {
+	if (!tick)
+	    TestLog.update(testStatus);
+	tick = true;
+    } else {
+	tick = false;
+    }
+
+    // check for test complete
+    if (testStatus.vbat <= testStatus.vend) {
+	stopTest(LOG_FINISHED);
+	// powerOff();
+	return false;
+    }
+    return true;
 }
 
 void testScreen()
 {
-    bool running = false;
+    startTest();
+    bool running = true;
 
-    // TODO: start the test
-
-    while (screen == SETUP_SCREEN)
+    while (screen == TEST_SCREEN)
     {
-        unsigned int vbat = 0;
-	char buf[7];
+	// draw the screen
+	showStatus();
 
-        // draw the screen
-        lcd.setCursor(0, 0);
-        lcd.print(running ? "Running" : "Stopped");
-        lcd.setCursor(0, 1);
-        lcd.print(mmss(buf, testTime()));
-        if (running) {
-            vbat = battery();
-#ifdef SERIAL_DEBUG      
-            Serial.print(mmss(buf, testTime()));
-            Serial.print(" ");
-            Serial.println(vString(buf, vbat));
-#endif
-            lcd.setCursor(10, 1);
-            lcd.print(vString(buf, vbat));
-            
-            if (vbat <= 1050) {
-                running = false;
-                stopTest();
-                stopTimer();
-                // need to log the test results here!
-                // turn off power relay
-                powerOff();
-            }
-        }    
-
-        // wait for button release (without refreshing screen)
+        // wait for button release
 	int button;
-	while ((button = readButtons()) != BUTTON_NONE)
-	    ;
+	while ((button = readButtons()) != BUTTON_NONE) {
+	    // run the test while waiting
+	    if (running) {
+		if (!runTest()) {
+		    running = false;
+		    screen = RESULTS_SCREEN;
+		    return;
+		}
+	    }
+	}
 
 	// wait for button press
-	while ((button = readButtons()) == BUTTON_NONE)
-	    ;
+	while ((button = readButtons()) == BUTTON_NONE) {
+	    // run the test while waiting
+	    if (running) {
+		if (!runTest()) {
+		    running = false;
+		    screen = RESULTS_SCREEN;
+		    return;
+		}
+	    }
+	}
 
 	// take action
 	switch (button) {
 	    case BUTTON_UP:
 		if (!running) {
 		    startTest();
-		    startTimer();
 		    running = true;
 		}
 		break;
 	    case BUTTON_DOWN:
 		if (running) {
-		    stopTest();
-		    stopTimer();
+		    stopTest(LOG_HALTED);
 		    running = false;
 		}
 		break;
 	    case BUTTON_LEFT:
-		screen = RESULTS_SCREEN;
-		break;
-	    case BUTTON_RIGHT:
-		screen = HOME_SCREEN;
+		if (!running)
+		    screen = RESULTS_SCREEN;
 		break;
 	}
     }

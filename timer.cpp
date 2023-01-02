@@ -5,7 +5,7 @@
 
 static uint32_t timerVal = 0;
 
-void startTimer()
+void startTimer(uint32_t start_time)
 {
     noInterrupts();           // disable all interrupts
     TCCR1A = 0;
@@ -15,6 +15,9 @@ void startTimer()
     TCCR1B |= (1 << WGM12);   // CTC mode
     TCCR1B |= (1 << CS12);    // 256 prescaler 
     TIMSK1 |= (1 << OCIE1A);  // enable timer compare interrupt
+
+    timerVal = start_time;
+
     interrupts();             // enable all interrupts
 }
 

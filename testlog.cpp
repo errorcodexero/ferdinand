@@ -5,48 +5,114 @@
 
 _TestLog TestLog;  // presumed singleton instance
 
-// Find the first and last occupied slots in the ring.
+// Initialize the logger, set the first and loast slots.
 void _TestLog::begin()
 {
-    /*
-	for (int addr = 0; addr < EEPROM.length(); addr++)
-	    EEPROM.update(addr, 0xFF);
+#if 0  // clear EEPROM for testing
+    for (int addr = 0; addr < EEPROM.length(); addr++)
+	EEPROM.update(addr, 0xFF);
+#endif
 
-	LogEntry entry1 = { LOG_FINISHED, "2023-01", 1320, 1050, 30*60 };
-	TestLog.put(0, entry1);
+#if 0  // preload EEPROM for testing
+    TestStatus entry1 = { LOG_FINISHED, "TEST-01", 1320, 1050, 1050, 30*60 };
+    EEPROM.put(0 * sizeof(TestStatus), entry1);
 
-	LogEntry entry2 = { LOG_HALTED,   "2023-02", 1220, 1180, 20*60 };
-	TestLog.put(1, entry2);
+    TestStatus entry2 = { LOG_HALTED,   "TEST-02", 1220, 1180, 1050, 20*60 };
+    EEPROM.put(1 * sizeof(TestStatus), entry2);
 
-	LogEntry entry3 = { LOG_RUNNING,  "2023-03", 1380, 1225,  5*60 };
-	TestLog.put(2, entry3);
-    */
+    TestStatus entry3 = { LOG_RUNNING,  "TEST-03", 1265, 1225, 1050, 5*60 };
+    EEPROM.put(2 * sizeof(TestStatus), entry3);
+#endif
 
-    _num_slots = (EEPROM.length() / sizeof (LogEntry));
+    _num_slots = (EEPROM.length() / sizeof (TestStatus));
 
-    LogEntry entry;
-    get(0, entry);
-    if (isActive(entry)) {
+    TestStatus entry;
+    _get(0, entry);
+    if (_isActive(entry)) {
 	// Slot 0 is occupied, but it may not be the first-used.
 	// Search for the marker after the last-used slot.
-	_last = findUnused(1);
+	_last = _findUnused(1);
 	// Continue searching to find the first-used slot.
-	_first = findUsed(_last);
+	_first = _findUsed(_last);
     } else {
 	// Slot 0 is unoccupied.  Search for the first-used slot.
-	_first = findUsed(1);
+	_first = _findUsed(1);
 	// Continue searching to find the end marker.
-	_last = findUnused(_first);
+	_last = _findUnused(_first);
     }
 }
 
-int _TestLog::findUsed(int slot)
+// Return the number of slots in the EEPROM.
+int _TestLog::num_slots()
+{
+    return _num_slots;
+}
+
+// Return the number of active entries in the EEPROM.
+int _TestLog::num_used()
+{
+    int used = _last - _first;
+    if (used < 0)
+	used += _num_slots;
+    return used;
+}
+
+// Get the nth log entry.
+TestStatus& _TestLog::get(int testNum, TestStatus& entry)
+{
+#if 0
+    assert(testNum >= 0 && testNum < num_used());
+#endif
+    int slot = _first + testNum;
+    if (slot >= _num_slots)
+	slot -= _num_slots;
+    unsigned int addr = slot * sizeof (TestStatus);
+    EEPROM.get(addr, entry);
+#ifdef SERIAL_DEBUG      
+    Serial.print("get: slot "); Serial.print(slot); Serial.print(" state "); Serial.println(entry.state);
+#endif
+    return entry;
+}
+
+// Create a new entry at the end of the log.
+// Clear the following entry and update the
+// _last index to mark the new end of the ring.
+// If the ring is full, adjust _first as well.
+TestStatus& _TestLog::add(TestStatus& entry)
+{
+    _put(_last, entry);
+    if (++_last == _num_slots)
+	_last = 0;
+    // write an end marker
+    _clear(_last);
+    // adjust _first if needed
+    if (_last == _first) {
+	if (++_first == _num_slots)
+	    _first = 0;
+    }
+#ifdef SERIAL_DEBUG
+    Serial.print("     first "); Serial.print(_first); Serial.print(" last "); Serial.println(_last);
+#endif
+    return entry;
+}
+
+// Update (overwrite) the last entry in the log.
+TestStatus& _TestLog::update(TestStatus& entry)
+{
+    int slot = _last - 1;
+    if (slot < 0)
+	slot = _num_slots - 1;
+    _put(slot, entry);
+    return entry;
+}
+
+int _TestLog::_findUsed(int slot)
 {
     // Search for the first active slot.
     while (slot < _num_slots) {
-	LogEntry entry;
-	get(slot, entry);
-	if (isActive(entry)) {
+	TestStatus entry;
+	_get(slot, entry);
+	if (_isActive(entry)) {
 	    return slot;
 	}
 	++slot;
@@ -55,13 +121,13 @@ int _TestLog::findUsed(int slot)
     return 0;
 }
 
-int _TestLog::findUnused(int slot)
+int _TestLog::_findUnused(int slot)
 {
     // Search for the marker after the last-used slot.
     while (slot < _num_slots) {
-	LogEntry entry;
-	get(slot, entry);
-	if (!isActive(entry)) {
+	TestStatus entry;
+	_get(slot, entry);
+	if (!_isActive(entry)) {
 	    return slot;
 	}
 	++slot;
@@ -70,25 +136,10 @@ int _TestLog::findUnused(int slot)
     return 0;
 }
 
-int _TestLog::num_slots()
+// Get the nth log entry.
+TestStatus& _TestLog::_get(int slot, TestStatus& entry)
 {
-    return _num_slots;
-}
-
-int _TestLog::first()
-{
-    return _first;
-}
-
-int _TestLog::last()
-{
-    return _last;
-}
-
-// Get the specified log entry.
-LogEntry& _TestLog::get(int slot, LogEntry& entry)
-{
-    unsigned int addr = slot * sizeof (LogEntry);
+    unsigned int addr = slot * sizeof (TestStatus);
     EEPROM.get(addr, entry);
 #ifdef SERIAL_DEBUG      
     Serial.print("get: slot "); Serial.print(slot); Serial.print(" state "); Serial.println(entry.state);
@@ -96,48 +147,31 @@ LogEntry& _TestLog::get(int slot, LogEntry& entry)
     return entry;
 }
 
-// Store the specified log entry.  If writing to the
-// _last slot, clear the following entry and update the
-// _last index to mark the new end of the ring.
-LogEntry& _TestLog::put(int slot, LogEntry& entry)
+// Store the specified log entry.
+TestStatus& _TestLog::_put(int slot, TestStatus& entry)
 {
 #ifdef SERIAL_DEBUG      
     Serial.print("put: slot "); Serial.print(slot); Serial.print(" state "); Serial.println(entry.state);
 #endif
-    unsigned int addr = slot * sizeof (LogEntry);
+    unsigned int addr = slot * sizeof (TestStatus);
     EEPROM.put(addr, entry);
-
-    if (slot == _last) {
-	if (++_last == _num_slots)
-	    _last = 0;
-	// write an end marker
-	clear(_last);
-	// if the log is full, adjust the _first index
-	if (_last == _first) {
-	    if (++_first == _num_slots)
-		_first = 0;
-	}
-    }
-#ifdef SERIAL_DEBUG
-    Serial.print("     first "); Serial.print(_first); Serial.print(" last "); Serial.println(_last);
-#endif
     return entry;
 }
 
 // Clear a single entry as a marker for the end of the ring.
-void _TestLog::clear(int slot)
+void _TestLog::_clear(int slot)
 {
 #ifdef SERIAL_DEBUG
     Serial.print("clear: slot "); Serial.println(slot);
 #endif
-    LogEntry entry;
+    TestStatus entry;
     memset(&entry, 0, sizeof entry);
-    unsigned int addr = slot * sizeof (LogEntry);
+    unsigned int addr = slot * sizeof (TestStatus);
     EEPROM.put(addr, entry);
 }
 
-// test entry state
-bool _TestLog::isActive(LogEntry& entry)
+// Test if log slot is in use.
+bool _TestLog::_isActive(TestStatus& entry)
 {
     // Don't just test for LOG_NONE, since hw-erased EEPROM
     //   returns 0xFFFF rather than 0x0000.
