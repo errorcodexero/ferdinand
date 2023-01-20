@@ -321,7 +321,8 @@ bool runTest()
     // check for test complete
     if (testStatus.vbat <= testStatus.vend) {
 	stopTest(LOG_FINISHED);
-	// powerOff();
+	delay(6000);
+	powerOff();
 	return false;
     }
     return true;
